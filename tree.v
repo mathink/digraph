@@ -248,8 +248,8 @@ Section EqTree.
   Fixpoint mem_tree (t: tree T): pred T :=
     match t with
       | node y f => xpredU1 y (mem_forest f)
-    end with
-  mem_forest (f: forest T): pred T :=
+    end
+  with mem_forest (f: forest T): pred T :=
     match f with
       | leaf => xpred0
       | sibl t f => xpredU (mem_tree t) (mem_forest f)
@@ -305,6 +305,9 @@ Section EqTree.
 
 End EqTree.
 Definition inE := (mem_tree1, in_node, inE).
+Check tree_predType.
+Check mem_tree_predType.
+Print Graph.
 
 Section TravIn.
 
@@ -324,6 +327,13 @@ Section TravIn.
       by rewrite in_sibl mem_cat; move: (Heqt x) (Heqf x) => /eqP -> /eqP ->.
   Qed.
 
+  Theorem traverse_correct_pre_tree t x:
+    (x \in t) == (x \in preorder_tree t).
+  Proof.
+    move: t x; apply traverse_correct_pre.
+  Qed.
+  
+
   Lemma traverse_correct_post:
     (forall t x, (x \in t) == (x \in postorder_tree t))/\
     (forall f x, (x \in f) == (x \in postorder_forest f)).
@@ -334,6 +344,12 @@ Section TravIn.
     - move=> x //=.
     - move=> t Heqt f Heqf x.
       by rewrite in_sibl mem_cat; move: (Heqt x) (Heqf x) => /eqP -> /eqP ->.
+  Qed.
+
+  Theorem traverse_correct_post_tree t x:
+    (x \in t) == (x \in postorder_tree t).
+  Proof.
+    move: t x; apply traverse_correct_pre.
   Qed.
 
 End TravIn.
