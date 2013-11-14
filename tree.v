@@ -305,9 +305,6 @@ Section EqTree.
 
 End EqTree.
 Definition inE := (mem_tree1, in_node, inE).
-Check tree_predType.
-Check mem_tree_predType.
-Print Graph.
 
 Section TravIn.
 
@@ -349,7 +346,7 @@ Section TravIn.
   Theorem traverse_correct_post_tree t x:
     (x \in t) == (x \in postorder_tree t).
   Proof.
-    move: t x; apply traverse_correct_pre.
+    move: t x; apply traverse_correct_post.
   Qed.
 
 End TravIn.
