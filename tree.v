@@ -166,6 +166,7 @@ Section Traverse.
 
 End Traverse.
 
+Infix "+++" := cat_forest (at level 50, left associativity).
 
 Lemma tree_forest_mut_rect:
   forall (T: Type)(P : tree T -> Type) (Q : forest T -> Type),
@@ -211,8 +212,13 @@ Section EqTree.
   Definition eqforestP: Equality.axiom eqforest := snd eqtreeP_eqforestP.
 
   Canonical tree_eqMixin := EqMixin eqtreeP.
-  Canonical tree_eqType := Eval hnf in EqType (tree T) tree_eqMixin.
-  
+  Canonical tree_eqType :=  Eval hnf in EqType (tree T) (EqMixin eqtreeP).
+
+  Print Coercions.
+  Print Graph.
+  (* Check tree_eqMixin. *)
+  Check tree_eqType.
+
   Lemma eqtreeE : eqtree = eq_op.
   Proof.
       by [].
@@ -252,14 +258,15 @@ Section EqTree.
   Definition eqtree_class := tree T.
   Identity Coercion tree_of_eqtree : eqtree_class >-> tree.
 
-  Coercion pred_of_eq_tree (s : eqtree_class) : pred_class := [eta mem_tree s].
+  Coercion pred_of_eq_tree (t : eqtree_class) : pred_class := [eta mem_tree t].
   Canonical tree_predType := @mkPredType T (tree T) pred_of_eq_tree.
   Canonical mem_tree_predType := mkPredType mem_tree.
+
 
   Definition eqforest_class := forest T.
   Identity Coercion forest_of_eqforest : eqforest_class >-> forest.
 
-  Coercion pred_of_eq_forest (s : eqforest_class) : pred_class := [eta mem_forest s].
+  Coercion pred_of_eq_forest (f : eqforest_class) : pred_class := [eta mem_forest f].
   Canonical forest_predType := @mkPredType T (forest T) pred_of_eq_forest.
   Canonical mem_forest_predType := mkPredType mem_forest.
 
@@ -287,9 +294,17 @@ Section EqTree.
     by rewrite in_node orbF //.
   Qed.
 
+  Let inE := (mem_tree1, in_node, inE).
+
+  Lemma mem_f_cat x f1 f2 :
+    (x \in f1 +++ f2) = (x \in f1) || (x \in f2).
+  Proof.
+    elim: f1 => [//=| t f /= Heq].
+    by rewrite in_sibl in_sibl Heq orbA //=.
+  Qed.
 
 End EqTree.
-
+Definition inE := (mem_tree1, in_node, inE).
 
 Section TravIn.
 
@@ -305,7 +320,7 @@ Section TravIn.
     - move=> x f Heq y.
       by rewrite in_node in_cons; move: (Heq y) => /eqP ->.
     - move=> x //=.
-    - move=> t Heqt f Heqf x.
+    - move=> t Heqt f Heqf x /=.
       by rewrite in_sibl mem_cat; move: (Heqt x) (Heqf x) => /eqP -> /eqP ->.
   Qed.
 
