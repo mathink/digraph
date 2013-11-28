@@ -8,8 +8,8 @@ Require Import
   Ssreflect.fingraph.
 
 Set Implicit Arguments.
-Unset Strict Implicit.
-Unset Printing Implicit Defensive.
+(* Unset Strict Implicit. *)
+(* Unset Printing Implicit Defensive. *)
 
 
 (* Lemma *)
@@ -55,7 +55,134 @@ Proof.
 Qed.    
 
 
-Section CFG.
+Module Digraph.
+  
+  Structure mixin_of (T: finType) :=
+    Mixin { dig: T -> seq T }.
+
+  Section ClassDef.
+    Structure class_of (T: Type):=
+      Class { base: Finite.class_of T;
+              mixin: mixin_of (@Finite.Pack T base T) }.
+    Local Coercion base: class_of >-> Finite.class_of.
+    
+    Structure type := 
+      Pack { sort;
+             _: class_of sort;
+             _: Type }.
+    Local Coercion sort: type >-> Sortclass.
+
+    Variables (T : Type) (cT : type).
+    Definition class := let: Pack _ c _ as cT' := cT return class_of cT' in c.
+    Definition clone c of phant_id class c := @Pack T c T.
+    Let xT := let: Pack T' _ _ := cT in T'.
+    Notation xclass := (class : class_of xT).
+
+    Definition pack b0 (m0: mixin_of (@Finite.Pack T b0 T)) :=
+      fun bT b & phant_id (Finite.class bT) b =>
+        fun m & phant_id m0 m => Pack (@Class T b m) T.
+
+    Definition finType := @Finite.Pack cT xclass xT.
+  End ClassDef.
+
+  Module Exports.
+    Coercion base : class_of >-> Finite.class_of.
+    Coercion mixin : class_of >-> mixin_of.
+    Coercion sort : type >-> Sortclass.
+    Coercion finType : type >-> Finite.type.
+    Canonical finType.
+    Notation digType := type.
+    Notation DigType T m := (@pack T _ m _ _ id _ id).
+    Notation DigMixin := Mixin.
+    Notation "[ 'digType' 'of' T 'for' cT ]" := (@clone T cT _ idfun)
+                                                   (at level 0, format "[ 'digType'  'of'  T  'for'  cT ]") : form_scope.
+    Notation "[ 'digType' 'of' T ]" := (@clone T _ _ id)
+                                          (at level 0, format "[ 'digType'  'of'  T ]") : form_scope.
+  End Exports.
+
+End Digraph.
+Import Digraph.Exports.
+
+Definition digraph T := Digraph.dig (Digraph.class T).
+Definition digrel (T: digType) := grel (digraph T).
+
+Module CFG.
+  
+  Section Properties.
+    Variables (T: digType)(root: T).
+    
+    Definition reachable := forall (v: T), connect (digrel T) root v.
+
+  End Properties.
+
+  Structure mixin_of (T: digType) :=
+    Mixin { root: T;
+            _: reachable T root }.
+  
+  Local Notation digType_for T b := (@Digraph.Pack T b T).
+  Section ClassDef.
+
+    Structure class_of (T: Type) :=
+      Class { base: Digraph.class_of T;
+              mixin: mixin_of (digType_for T base) }.
+    Local Coercion base: class_of >-> Digraph.class_of.
+    
+    Structure type := 
+      Pack { sort;
+             _: class_of sort;
+             _: Type }.
+    Local Coercion sort: type >-> Sortclass.
+ 
+    Variables (T : Type) (cT : type).
+    Definition class := let: Pack _ c _ as cT' := cT return class_of cT' in c.
+    Definition clone c of phant_id class c := @Pack T c T.
+    Let xT := let: Pack T' _ _ := cT in T'.
+    Notation xclass := (class : class_of xT).
+
+    Definition pack b0 (m0: mixin_of (digType_for T b0)) :=
+      fun bT b & phant_id (Digraph.class bT) b => 
+        fun m & phant_id m0 m => Pack (@Class T b m) T.
+
+    Definition finType := @Finite.Pack cT xclass xT.
+    Definition digType := @Digraph.Pack cT xclass xT.
+  End ClassDef.
+
+  Module Exports.
+    Coercion base : class_of >-> Digraph.class_of.
+    Coercion mixin : class_of >-> mixin_of.
+    Coercion sort : type >-> Sortclass.
+    Coercion finType : type >-> Finite.type.
+    Canonical finType.
+    Coercion digType : type >-> Digraph.type.
+    Canonical digType.
+    Notation cfgType := type.
+    Notation CfgType T m := (@pack T _ m _ _ id _ id).
+    Notation CfgMixin := Mixin.
+    Notation "[ 'cfgType' 'of' T 'for' cT ]" := (@clone T cT _ idfun)
+                                                   (at level 0, format "[ 'cfgType'  'of'  T  'for'  cT ]") : form_scope.
+    Notation "[ 'cfgType' 'of' T ]" := (@clone T _ _ id)
+                                          (at level 0, format "[ 'cfgType'  'of'  T ]") : form_scope.
+  End Exports.
+
+End CFG.
+Import CFG.Exports.
+
+Definition dig_pred_sort (T : digType) (pT : predType T) := pred_sort pT.
+Identity Coercion pred_sort_of_dig : dig_pred_sort >-> pred_sort.
+
+Definition cfg_pred_sort (T : cfgType) (pT : predType T) := pred_sort pT.
+Identity Coercion pred_sort_of_cfg : cfg_pred_sort >-> pred_sort.
+
+Definition root (T: cfgType) := CFG.root (CFG.class T).
+
+Section Dominator.
+
+  Variables (V: cfgType).
+  (* ERROR: 通らない。 pred_sort 某 が必要と言われる *)
+  Definition dominate (u v: V) :=
+    forall (p: seq V),
+      path (digrel V) (root V) p -> v = last (root V) p -> u \in ((root V)::p).
+
 
   Variables (V: finType)(E: rel V)(r: V).
 
@@ -66,6 +193,7 @@ Section CFG.
     forall (p: seq V),
       path E r p -> v = last r p -> u \in (r::p).
 
+
   Lemma dominate_root u:
     dominate r u.
   Proof.
@@ -74,7 +202,7 @@ Section CFG.
   Qed.
 
   Lemma dominate_refl u:
-    dominate u u.
+     dominate u u.
   Proof.
     by rewrite /dominate; move => p Hp ->; apply mem_last.
   Qed.
