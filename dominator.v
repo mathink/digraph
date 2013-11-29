@@ -175,5 +175,83 @@ Section CFG.
   Qed.
 
 
+(* Natural Loop *)
+
+  Structure backEdge :=
+    BackEdge { head: V;
+               tail: V;
+               dom: dominate head tail;
+               back: E tail head }.
+
+  Definition naturaloop (be: backEdge)(x: V) :=
+    dominate (head be) x /\
+    (exists p,
+       [/\ path E x p , last x p = tail be & head be \notin p]).
+
+  Lemma dominate_pred (u v: V):
+    dominate u v -> u != v ->
+    forall x, E x v -> dominate u x.
+  Proof.
+    rewrite/dominate.
+    move=> Hdom Hneq x He.
+    move=> p' Hpath Hlast.
+    have H0: path E r (rcons p' v);
+      first by rewrite rcons_path; apply/andP;
+      split; last rewrite -Hlast.
+    have H1: v = last r (rcons p' v);
+      first by rewrite last_rcons.
+    move: (Hdom (rcons p' v) H0 H1).
+    rewrite in_cons mem_rcons in_cons.
+    move=> /or3P [/eqP Heq | /eqP Heq | Hin].
+    - by rewrite Heq in_cons; apply/orP; left.
+    - rewrite Heq eq_refl in Hneq; done.
+    - by rewrite in_cons; apply/orP; right.
+  Qed.
+
+  Lemma dominate_path (u v w: V)(p: seq V):
+    dominate u v -> dominate u w ->
+    path E v p -> u \notin p -> last v p = w ->
+    forall x, x \in p -> dominate u x.
+  Proof.
+    move: p w => p; pattern p; apply last_ind; first done.
+    clear p; move=> p h IH w Hdomuv Hdomuw.
+    rewrite rcons_path; move=> /andP [Hpath Hrel] Hnin Hlast x.
+    rewrite last_rcons in Hlast; subst.
+    rewrite mem_rcons in_cons; move=> /orP [/eqP -> //=| Hin].
+    rewrite mem_rcons in_cons negb_or in Hnin.
+    move: Hnin => /andP [Heq Hnin].
+    apply (IH (last v p)); try done.
+    clear Hin.
+    move: Hrel.
+    apply dominate_pred; try done.
+  Qed.    
+
+
+  Lemma naturaloop_nest (be1 be2: backEdge):
+    head be1 != head be2 ->
+    naturaloop be1 (head be2) ->
+    forall x, naturaloop be2 x -> naturaloop be1 x.
+  Proof.
+    rewrite/naturaloop /=.
+    move: be1 be2 => [h1 t1 Hdom1 Hrel1] [h2 t2 Hdom2 Hrel2] /= Hneq.
+    move=> [Hdom12 [p12 [Hpath12 [Hlast12 Hnin12]]]] x.
+    move=> [Hdom [p [Hpath [Hlast Hnin]]]].
+    split; first by apply dominate_trans with h2.
+    exists (p ++ h2::p12).
+    split.
+    - rewrite cat_path //=; apply/and3P;
+      split; by [| rewrite Hlast |].
+    - by rewrite last_cat.
+    - rewrite mem_cat negb_or in_cons negb_or.
+      apply/and3P; split; try done.
+      move: {+}Hnin.
+      apply contraNN.
+      move => Hin1.
+      move:
+        (dominate_path Hdom Hdom2 Hpath Hnin Hlast Hin1) => Hdom21.
+      move: (dominate_antisym Hdom12 Hdom21) => /eqP Heq.
+      rewrite Heq eq_refl in Hneq; done.
+  Qed.
+
 End CFG.
 

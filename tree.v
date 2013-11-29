@@ -214,11 +214,6 @@ Section EqTree.
   Canonical tree_eqMixin := EqMixin eqtreeP.
   Canonical tree_eqType :=  Eval hnf in EqType (tree T) (EqMixin eqtreeP).
 
-  Print Coercions.
-  Print Graph.
-  (* Check tree_eqMixin. *)
-  Check tree_eqType.
-
   Lemma eqtreeE : eqtree = eq_op.
   Proof.
       by [].
