@@ -4,8 +4,10 @@ Require Import
   Ssreflect.ssreflect Ssreflect.ssrbool
   Ssreflect.ssrfun Ssreflect.eqtype
   Ssreflect.ssrnat Ssreflect.seq
-  Ssreflect.path Ssreflect.fintype
-  Ssreflect.fingraph.
+  Ssreflect.fintype
+  MathComp.path MathComp.fingraph.
+
+Require Import tree.
 
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -16,8 +18,7 @@ Unset Printing Implicit Defensive.
 Lemma connect_uniqP {T: finType}(e: rel T) x y:
   reflect (exists p, path e x p /\ y = last x p /\ uniq (x::p)) (connect e x y).
 Proof.
-  apply /iffP.
-  apply connectP.
+  apply /iffP; [| apply connectP | |].
   - move => [p Hp Heq].
     apply shortenP in Hp.
     rewrite -Heq in Hp.
@@ -59,8 +60,7 @@ Section CFG.
 
   Variables (V: finType)(E: rel V)(r: V).
 
-  Hypothesis reachable:
-    forall (v: V), connect E r v.
+  Hypothesis reachable: forall (v: V), connect E r v.
 
   Definition dominate (u v: V) :=
     forall (p: seq V),
@@ -162,6 +162,15 @@ Section CFG.
   Qed.
 
   
+  Definition strict_dominate (u v: V): Prop :=
+    dominate u v /\ u <> v.
+
+  Definition dominate_frontier (u: V)(vl: seq V): Prop :=
+    forall v: V, v \in vl ->
+                       ~strict_dominate u v/\
+                       exists p: V,
+                         E p v /\ dominate u p.
+
   Definition idom (u v: V): Prop :=
     dominate u v /\ u <> v /\ forall w, dominate w v -> dominate w u.
 
@@ -173,7 +182,6 @@ Section CFG.
     apply Hu in Hdomwv; apply Hw in Hdomuv.
     by move: (dominate_antisym Hdomuv Hdomwv) => /eqP.
   Qed.
-
 
 (* Natural Loop *)
 
@@ -187,6 +195,9 @@ Section CFG.
     dominate (head be) x /\
     (exists p,
        [/\ path E x p , last x p = tail be & head be \notin p]).
+
+  Definition naturaloop_include (be1 be2: backEdge) :=
+    forall x: V, naturaloop be1 x -> naturaloop be2 x.
 
   Lemma dominate_pred (u v: V):
     dominate u v -> u != v ->
@@ -230,7 +241,7 @@ Section CFG.
   Lemma naturaloop_nest (be1 be2: backEdge):
     head be1 != head be2 ->
     naturaloop be1 (head be2) ->
-    forall x, naturaloop be2 x -> naturaloop be1 x.
+    naturaloop_include be2 be1.
   Proof.
     rewrite/naturaloop /=.
     move: be1 be2 => [h1 t1 Hdom1 Hrel1] [h2 t2 Hdom2 Hrel2] /= Hneq.
@@ -255,3 +266,116 @@ Section CFG.
 
 End CFG.
 
+
+Definition State (S X: Type) := S -> (X*S).
+Definition emb {S X: Type}(x: X): State S X :=
+  fun s: S => (x,s).
+Definition bind {S X Y: Type}
+           (f: X -> State S Y)(m: State S X): State S Y :=
+  fun s: S => let (x,s') := m s in f x s'.
+
+Definition get {S: Type}: State S S := fun s => (s,s).
+Definition put {S: Type}(s: S): State S S := fun s' => (s',s).
+Definition run {S X: Type}(s: S)(m: State S X): X := (m s).1.
+
+Notation "m >>= f" := (bind f m) (at level 65, left associativity).
+Notation "m >> p" := (bind (fun _ => p) m) (at level 65, left associativity).
+Notation "x <- m ; p" := (m >>= fun x => p) (at level 60, right associativity).
+Notation "(: x , y :) <- m ; p" := (m >>= fun tup:_*_ => let: (x,y) := tup in p) (at level 60, right associativity).
+Notation "'do' m" := m (at level 100, right associativity).
+
+Definition modify {S: Type}(f: S -> S): State S S :=
+  do s <- get;
+     put (f s).
+
+Lemma bind_emb S X :
+  forall (m: State S X)(s: S),
+    run s (m >>= emb) = run s m.
+Proof.
+  intros m s; unfold run, emb, bind; destruct (m s); reflexivity.
+Qed.
+
+Lemma emb_bind S X Y:
+  forall (f: X -> State S Y)(x: X)(s: S),
+    run s (f x >>= emb) = run s (f x).
+Proof.
+  intros f x s; unfold run, emb, bind;
+  destruct (f x s); reflexivity.
+Qed.
+
+Lemma bind_assoc S X Y Z:
+  forall (f: X -> State S Y)(g: Y -> State S Z)(m: State S X)(s: S),
+    run s (m >>= f >>= g)
+    = run s (m >>= (fun x => f x >>= g)).
+Proof.
+  intros f g m s; unfold run, emb, bind.
+  destruct (m s); reflexivity.
+Qed.  
+
+
+Section DFS.
+
+  Fixpoint foldlM {S X Y: eqType}
+           (op: Y -> X -> State S Y)(e: Y)(l: seq X): State S Y :=
+    if l is [:: h & t]
+    then do e' <- op e h;
+            foldlM op e' t
+    else emb e.
+  
+  Variable T: eqType.           (* for test *)
+  (* Variable T: finType. *)
+  Variable g: T -> seq T.
+
+  Fixpoint dfs_forestM (n: nat)(h: forest T)(x: T)
+  : State (seq T) (forest T) :=
+    do v <- get;
+       if (x \in v) then emb h
+       else if n is n'.+1
+       then do _ <- put (x::v);
+               h' <- foldlM (dfs_forestM n') leaf (g x);
+               emb (sibl (node x h') h)
+       else emb h.
+
+  Definition dfs_treeM (n: nat)(x: T)
+  : State (seq T) (tree T) :=
+    do _ <- modify (cons x);
+       h' <- foldlM (dfs_forestM n) leaf (g x);
+       emb (node x h').
+
+End DFS.
+
+Definition g (n: nat) :=
+  match n with
+    | 0 => [:: 1 ]
+    | 1 => [:: 2; 8]
+    | 2 => [:: 3; 4]
+    | 3 => [:: 5; 6]
+    | 4 => [:: 6]
+    | 5 => [:: 7]
+    | 6 => [:: 7]
+    | 7 => [:: 14]
+    | 8 => [:: 9; 10; 11]
+    | 9 => [:: 13]
+    | 10 => [:: 13; 15]
+    | 11 => [:: 12]
+    | 12 => [:: 8]
+    | 13 => [:: 14]
+    | 14 => [:: 16]
+    | 15 => [:: 14]
+    | _ => [::]
+  end.
+
+Eval compute in (run [::] (dfs_treeM g 20 0)).
+
+Fixpoint foldl_tree {X Y: Type}(op: Y -> X -> Y)(e: Y)(t: tree X): Y :=
+  let (n,f) := t in foldl_forest op (op e n) f
+with foldl_forest {X Y: Type}(op: Y -> X -> Y)(e: Y)(f: forest X): Y :=
+       match f with
+         | leaf => e
+         | sibl t f' => foldl_forest op (foldl_tree op e t) f'
+       end.
+
+Eval compute in
+    (foldl_forest plus 0 (run [::] (dfs_forestM g 10 leaf 0))).
+Eval compute in
+    (foldl_tree plus 0 (run [::] (dfs_treeM g 10 0))).

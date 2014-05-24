@@ -11,7 +11,7 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 
-Delimit Scope tree_scope with TREE.
+Delimit Scope tree_scope with tree.
 Open Scope tree_scope.
 
 
