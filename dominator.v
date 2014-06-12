@@ -267,83 +267,51 @@ Section CFG.
 End CFG.
 
 
-Definition State (S X: Type) := S -> (X*S).
-Definition emb {S X: Type}(x: X): State S X :=
-  fun s: S => (x,s).
-Definition bind {S X Y: Type}
-           (f: X -> State S Y)(m: State S X): State S Y :=
-  fun s: S => let (x,s') := m s in f x s'.
 
-Definition get {S: Type}: State S S := fun s => (s,s).
-Definition put {S: Type}(s: S): State S S := fun s' => (s',s).
-Definition run {S X: Type}(s: S)(m: State S X): X := (m s).1.
-
-Notation "m >>= f" := (bind f m) (at level 65, left associativity).
-Notation "m >> p" := (bind (fun _ => p) m) (at level 65, left associativity).
-Notation "x <- m ; p" := (m >>= fun x => p) (at level 60, right associativity).
-Notation "(: x , y :) <- m ; p" := (m >>= fun tup:_*_ => let: (x,y) := tup in p) (at level 60, right associativity).
-Notation "'do' m" := m (at level 100, right associativity).
-
-Definition modify {S: Type}(f: S -> S): State S S :=
-  do s <- get;
-     put (f s).
-
-Lemma bind_emb S X :
-  forall (m: State S X)(s: S),
-    run s (m >>= emb) = run s m.
-Proof.
-  intros m s; unfold run, emb, bind; destruct (m s); reflexivity.
-Qed.
-
-Lemma emb_bind S X Y:
-  forall (f: X -> State S Y)(x: X)(s: S),
-    run s (f x >>= emb) = run s (f x).
-Proof.
-  intros f x s; unfold run, emb, bind;
-  destruct (f x s); reflexivity.
-Qed.
-
-Lemma bind_assoc S X Y Z:
-  forall (f: X -> State S Y)(g: Y -> State S Z)(m: State S X)(s: S),
-    run s (m >>= f >>= g)
-    = run s (m >>= (fun x => f x >>= g)).
-Proof.
-  intros f g m s; unfold run, emb, bind.
-  destruct (m s); reflexivity.
-Qed.  
-
+(* Monadic Computations *)
+Generalizable All Variables.
+Notation "f $ x" := (f x) (at level 95, only parsing, right associativity).
+Definition function_compose {A B C: Type}(f: A -> B)(g: B -> C) :=
+  fun x => g $ f x.
+Notation "g • f" := (function_compose f g)
+                      (at level 60, right associativity).
 
 Section DFS.
 
-  Fixpoint foldlM {S X Y: eqType}
-           (op: Y -> X -> State S Y)(e: Y)(l: seq X): State S Y :=
-    if l is [:: h & t]
-    then do e' <- op e h;
-            foldlM op e' t
-    else emb e.
-  
-  Variable T: eqType.           (* for test *)
-  (* Variable T: finType. *)
+  Variable T: finType.
   Variable g: T -> seq T.
 
-  Fixpoint dfs_forestM (n: nat)(h: forest T)(x: T)
-  : State (seq T) (forest T) :=
-    do v <- get;
-       if (x \in v) then emb h
-       else if n is n'.+1
-       then do _ <- put (x::v);
-               h' <- foldlM (dfs_forestM n') leaf (g x);
-               emb (sibl (node x h') h)
-       else emb h.
+  Fixpoint dfs_forest (n: nat)(vh: seq T*forest T)(x: T)
+  : seq T*forest T :=
+    if (x \in vh.1) then vh
+    else if n is n'.+1
+         then let vh' := foldl (dfs_forest n') (x::vh.1,leaf) (g x) in
+              (vh'.1,sibl (node x vh'.2) vh.2)
+         else vh.
 
-  Definition dfs_treeM (n: nat)(x: T)
-  : State (seq T) (tree T) :=
-    do _ <- modify (cons x);
-       h' <- foldlM (dfs_forestM n) leaf (g x);
-       emb (node x h').
+  Lemma dfs_forest_subset n a vh:
+      vh.1 \subset (foldl (dfs_forest n) vh a).1.
+  Proof.
+    elim: n a vh => [| n IHn].
+    - elim=> [//=|x t IHa] vh /=.
+      by rewrite if_same /=; apply IHa.
+    - elim=> /= [//=|x t IHa] vh.
+      apply: subset_trans {IHa}(IHa _).
+      case: ifP => // _.
+      apply: subset_trans {IHn}(IHn _ _).
+      apply /subsetP=> y.
+      exact: predU1r.
+  Qed.
+
+  Definition dfs_tree (n: nat)(x: T)(v: seq T): tree T :=
+    node x (foldl (dfs_forest n) (x::v,leaf) (g x)).2.
+
+(* TODO: lemma about dfs_tree *)
 
 End DFS.
 
+(* TODO: make a subType of nat for test *)
+(* 
 Definition g (n: nat) :=
   match n with
     | 0 => [:: 1 ]
@@ -365,17 +333,5 @@ Definition g (n: nat) :=
     | _ => [::]
   end.
 
-Eval compute in (run [::] (dfs_treeM g 20 0)).
-
-Fixpoint foldl_tree {X Y: Type}(op: Y -> X -> Y)(e: Y)(t: tree X): Y :=
-  let (n,f) := t in foldl_forest op (op e n) f
-with foldl_forest {X Y: Type}(op: Y -> X -> Y)(e: Y)(f: forest X): Y :=
-       match f with
-         | leaf => e
-         | sibl t f' => foldl_forest op (foldl_tree op e t) f'
-       end.
-
-Eval compute in
-    (foldl_forest plus 0 (run [::] (dfs_forestM g 10 leaf 0))).
-Eval compute in
-    (foldl_tree plus 0 (run [::] (dfs_treeM g 10 0))).
+Eval compute in (dfs_tree g 20 0 [::]).
+*)
