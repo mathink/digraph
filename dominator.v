@@ -306,7 +306,10 @@ Section DFS.
   Definition dfs_tree (n: nat)(x: T)(v: seq T): tree T :=
     node x (foldl (dfs_forest n) (x::v,leaf) (g x)).2.
 
-(* TODO: lemma about dfs_tree *)
+  Lemma dfs_tree_dfs n x v:
+    preorder_tree (dfs_tree n x v) = dfs g n v x.
+  Proof.
+    Abort.
 
 End DFS.
 
